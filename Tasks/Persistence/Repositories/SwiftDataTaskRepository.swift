@@ -12,16 +12,19 @@ final class SwiftDataTaskRepository: TaskRepository {
     func disconnect() {
         context = nil
     }
+    private let mediaStore: TaskMediaStore
     private let beforeSave: () throws -> Void
     private let afterSave: () -> Void
     private let beforeFetch: () throws -> Void
 
     init(
         store: PersistenceContainer,
+        mediaStore: TaskMediaStore = .shared,
         beforeSave: @escaping () throws -> Void = {},
         afterSave: @escaping () -> Void = {},
         beforeFetch: @escaping () throws -> Void = {}
     ) {
+        self.mediaStore = mediaStore
         let context = ModelContext(store.container)
         context.autosaveEnabled = false
         self.context = context
@@ -149,17 +152,57 @@ final class SwiftDataTaskRepository: TaskRepository {
     }
 
     func applyRemoteSnapshot(_ snapshot: RemoteTaskSnapshot) async throws {
-        guard try fetchPendingDeletion(id: snapshot.id) == nil else { return }
-        if let record = try fetchRecord(id: snapshot.id) {
-            guard !record.pendingSync, snapshot.updatedAt >= record.updatedAt else { return }
+        try snapshot.validate()
+        guard try canApply(snapshot) else { return }
+        let sessionID = UUID()
+        let attachments = snapshot.details?.document?.attachments ?? []
+        try await mediaStore.stageForSync(snapshot, sessionID: sessionID)
+        let copied: [UUID]
+        do {
+            copied = try await mediaStore.prepare(attachments, sessionID: sessionID)
+        } catch {
+            await mediaStore.discard(sessionID: sessionID)
+            throw error
+        }
+        do {
+            try Task.checkCancellation()
+            // Local edits can arrive while media is being written.
+            guard try canApply(snapshot) else {
+                await mediaStore.rollback(copied)
+                await mediaStore.discard(sessionID: sessionID)
+                return
+            }
+            let existing = try fetchRecord(id: snapshot.id)
+            let record = existing ?? StoredTask(id: snapshot.id, title: snapshot.title, isDone: snapshot.isDone,
+                                               updatedAt: snapshot.updatedAt, pendingSync: false)
+            let encoded = try snapshot.details?.document.map { try JSONEncoder().encode($0) }
             record.title = snapshot.title
             record.isDone = snapshot.isDone
             record.updatedAt = snapshot.updatedAt
-        } else {
-            writeContext.insert(StoredTask(id: snapshot.id, title: snapshot.title, isDone: snapshot.isDone,
-                                          updatedAt: snapshot.updatedAt, pendingSync: false))
+            if let details = snapshot.details {
+                record.notes = details.notes
+                record.documentData = encoded
+                record.dueDate = details.dueDate
+                record.dueTime = details.dueTime
+                record.dueEndTime = details.dueEndTime
+                record.reminderDate = details.reminderDate
+                record.iconName = details.iconName
+                record.colorID = details.colorID
+            }
+            if existing == nil { writeContext.insert(record) }
+            try saveChanges()
+        } catch {
+            await mediaStore.rollback(copied)
+            await mediaStore.discard(sessionID: sessionID)
+            throw error
         }
-        try saveChanges()
+        await mediaStore.discard(sessionID: sessionID)
+    }
+
+    private func canApply(_ snapshot: RemoteTaskSnapshot) throws -> Bool {
+        guard try fetchPendingDeletion(id: snapshot.id) == nil else { return false }
+        guard let record = try fetchRecord(id: snapshot.id) else { return true }
+        return !record.pendingSync && snapshot.updatedAt >= record.updatedAt
     }
 
     func markSynced(_ sentSnapshot: TaskSnapshot) async throws {

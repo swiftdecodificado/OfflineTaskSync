@@ -97,6 +97,37 @@ actor TaskMediaStore {
         }
     }
 
+    func exportForSync(_ task: TaskSnapshot) throws -> RemoteTaskSnapshot {
+        var snapshot = RemoteTaskSnapshot(task)
+        for attachment in task.document?.attachments ?? [] {
+            let data = try Data(contentsOf: resolve(attachment, sessionID: task.id))
+            let thumbnail = try thumbnail(attachment, sessionID: task.id)
+            snapshot.details?.attachments.append(.init(id: attachment.id, data: data, thumbnail: thumbnail))
+        }
+        try snapshot.validate()
+        return snapshot
+    }
+
+    func stageForSync(_ snapshot: RemoteTaskSnapshot, sessionID: UUID) throws {
+        try snapshot.validate()
+        do {
+            for reference in snapshot.details?.document?.attachments ?? [] {
+                guard let payload = snapshot.details?.attachments.first(where: { $0.id == reference.id }) else {
+                    throw RemoteTaskSnapshot.ContractError.invalidPayload
+                }
+                let base = staging(sessionID)
+                try manager.createDirectory(at: base.appendingPathComponent(reference.id.uuidString), withIntermediateDirectories: true)
+                try payload.data.write(to: base.appendingPathComponent(reference.relativePath), options: .atomic)
+                if let path = reference.thumbnailPath, let thumbnail = payload.thumbnail {
+                    try thumbnail.write(to: base.appendingPathComponent(path), options: .atomic)
+                }
+            }
+        } catch {
+            discard(sessionID: sessionID)
+            throw error
+        }
+    }
+
     func removeTransfer(_ url: URL) {
         let folder = manager.temporaryDirectory.appendingPathComponent("TaskTransfers").standardizedFileURL.path + "/"
         if url.standardizedFileURL.path.hasPrefix(folder) { try? manager.removeItem(at: url.deletingLastPathComponent()) }

@@ -24,6 +24,7 @@ final class SyncCoordinator {
     var onSyncCompleted: (() -> Void)?
 
     private let store: any TaskRepository
+    private let mediaStore: TaskMediaStore
     private let syncService: SyncService
     private let networkMonitor: NetworkMonitor
     private let retryDelays: [Duration]
@@ -38,8 +39,10 @@ final class SyncCoordinator {
         store: any TaskRepository,
         syncService: SyncService,
         networkMonitor: NetworkMonitor,
+        mediaStore: TaskMediaStore = .shared,
         retryDelays: [Duration] = [.seconds(2), .seconds(5), .seconds(15)]
     ) {
+        self.mediaStore = mediaStore
         self.store = store
         self.syncService = syncService
         self.networkMonitor = networkMonitor
@@ -205,7 +208,13 @@ final class SyncCoordinator {
         let pending = try await store.pendingRecords()
         try checkCanSync()
         if !pending.isEmpty {
-            try await syncService.push(pending.map(RemoteTaskSnapshot.init))
+            var changes: [RemoteTaskSnapshot] = []
+            for item in pending {
+                try checkCanSync()
+                changes.append(try await mediaStore.exportForSync(item))
+            }
+            try checkCanSync()
+            try await syncService.push(changes)
             for item in pending {
                 try checkCanSync()
                 try await store.markSynced(item)

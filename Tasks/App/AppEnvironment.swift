@@ -57,8 +57,8 @@ final class AppEnvironment {
         mediaStore: TaskMediaStore,
         enableIntegrations: Bool = false
     ) {
-        let taskStore = SwiftDataTaskRepository(store: persistentStore)
-        let syncCoordinator = SyncCoordinator(store: taskStore, syncService: syncService, networkMonitor: networkMonitor)
+        let taskStore = SwiftDataTaskRepository(store: persistentStore, mediaStore: mediaStore)
+        let syncCoordinator = SyncCoordinator(store: taskStore, syncService: syncService, networkMonitor: networkMonitor, mediaStore: mediaStore)
         syncCoordinator.suspend()
         let viewModel = TasksViewModel(
             store: taskStore,

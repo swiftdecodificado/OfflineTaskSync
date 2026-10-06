@@ -8,6 +8,10 @@ protocol SyncService: Sendable {
 
 extension RemoteTaskSnapshot {
     init(_ task: TaskSnapshot) {
-        self.init(id: task.id, title: task.title, isDone: task.isDone, updatedAt: task.updatedAt)
+        self.init(id: task.id, title: task.title, isDone: task.isDone, updatedAt: task.updatedAt,
+                  version: Self.currentVersion,
+                  details: Details(notes: task.notes, document: task.document, dueDate: task.dueDate,
+                                   dueTime: task.dueTime, dueEndTime: task.dueEndTime,
+                                   reminderDate: task.reminderDate, iconName: task.iconName, colorID: task.colorID))
     }
 }
