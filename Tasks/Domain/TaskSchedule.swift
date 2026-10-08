@@ -30,20 +30,35 @@ struct AgendaTimeGrid {
 }
 
 enum TaskScheduleError: LocalizedError {
-    case invalidEnd
+    case missingStart, invalidEnd
     var errorDescription: String? {
-        AppLocalization.string("Choose an end time after the start, within the same day.")
+        switch self {
+        case .missingStart: AppLocalization.string("Escolha a data e o horário da atividade.")
+        case .invalidEnd: AppLocalization.string("Choose an end time after the start, within the same day.")
+        }
     }
 }
 
 enum TaskSchedule {
     static func validate(_ draft: TaskDraft, calendar: Calendar = .current) throws {
+        try requireStart(day: draft.dueDate, time: draft.dueTime)
         guard let end = draft.dueEndTime else { return }
         guard let day = draft.dueDate, let start = draft.dueTime,
               calendar.isDate(start, inSameDayAs: day), end > start,
               end <= AgendaTimeGrid(day: day, calendar: calendar).interval.end else {
             throw TaskScheduleError.invalidEnd
         }
+    }
+
+    static func normalizedStart(day: Date, time: Date, calendar: Calendar = .current) -> Date {
+        guard !calendar.isDate(time, inSameDayAs: day) else { return time }
+        let parts = calendar.dateComponents([.hour, .minute, .second], from: time)
+        return calendar.date(bySettingHour: parts.hour ?? 0, minute: parts.minute ?? 0,
+                             second: parts.second ?? 0, of: day) ?? time
+    }
+
+    static func requireStart(day: Date?, time: Date?) throws {
+        guard day != nil, time != nil else { throw TaskScheduleError.missingStart }
     }
 
     static func shiftedEnd(from start: Date?, end: Date?, to newStart: Date?, calendar: Calendar = .current) -> Date? {

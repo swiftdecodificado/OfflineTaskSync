@@ -37,23 +37,30 @@ final class SwiftDataTaskRepository: TaskRepository {
     var hasChanges: Bool { writeContext.hasChanges }
 
     func createTask(id: UUID = UUID(), title: String) async throws {
-        try await createTask(id: id, title: title, notes: "", dueDate: nil, dueTime: nil, reminderDate: nil, icon: nil, color: .defaultColor)
+        let now = Calendar.current.dateInterval(of: .minute, for: .now)?.start ?? .now
+        try await createTask(id: id, title: title, notes: "", dueDate: Calendar.current.startOfDay(for: now),
+                             dueTime: now, reminderDate: nil, icon: nil, color: .defaultColor)
     }
 
     func createTask(id: UUID, title: String, notes: String, dueDate: Date?, dueTime: Date?, reminderDate: Date?, icon: TaskIcon?, color: TaskColor = .defaultColor) async throws {
+        try TaskSchedule.requireStart(day: dueDate, time: dueTime)
         guard try fetchRecord(id: id) == nil else { return }
         let record = StoredTask(id: id, title: title, isDone: false, updatedAt: Date(), pendingSync: true)
         record.colorID = color.rawValue
         record.iconName = icon?.rawValue
         record.notes = notes
         record.dueDate = dueDate
-        record.dueTime = dueDate == nil ? nil : dueTime
+        record.dueTime = dueDate.flatMap { day in dueTime.map { TaskSchedule.normalizedStart(day: day, time: $0) } }
         record.reminderDate = reminderDate
         writeContext.insert(record)
         try saveChanges()
     }
 
     func saveDraft(_ draft: TaskDraft, creating: Bool) async throws {
+        var draft = draft
+        if let day = draft.dueDate, let time = draft.dueTime {
+            draft.dueTime = TaskSchedule.normalizedStart(day: day, time: time)
+        }
         try TaskSchedule.validate(draft)
         let existing = try fetchRecord(id: draft.id)
         if creating, existing != nil { throw CocoaError(.fileWriteFileExists) }
@@ -98,15 +105,13 @@ final class SwiftDataTaskRepository: TaskRepository {
     }
 
     func setDueDate(id: UUID, date: Date?) async throws {
+        guard let date else { throw TaskScheduleError.missingStart }
         try update(id: id) { record in
-            if let date, let time = record.dueTime {
+            if let time = record.dueTime {
                 let components = Calendar.current.dateComponents([.hour, .minute], from: time)
                 let start = Calendar.current.date(bySettingHour: components.hour ?? 0, minute: components.minute ?? 0, second: 0, of: date)
                 record.dueEndTime = TaskSchedule.shiftedEnd(from: record.dueTime, end: record.dueEndTime, to: start)
                 record.dueTime = start
-            } else if date == nil {
-                record.dueTime = nil
-                record.dueEndTime = nil
             }
             record.dueDate = date
         }
@@ -117,6 +122,8 @@ final class SwiftDataTaskRepository: TaskRepository {
     }
 
     func setDueTime(id: UUID, date: Date?) async throws {
+        guard let record = try fetchRecord(id: id) else { return }
+        try TaskSchedule.requireStart(day: record.dueDate, time: date)
         try update(id: id) { record in
             let start = record.dueDate == nil ? nil : date
             record.dueEndTime = TaskSchedule.shiftedEnd(from: record.dueTime, end: record.dueEndTime, to: start)

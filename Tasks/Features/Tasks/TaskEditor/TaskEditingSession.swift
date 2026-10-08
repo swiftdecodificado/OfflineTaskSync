@@ -46,7 +46,7 @@ final class TaskEditingSession: Identifiable {
     var hasChanges: Bool { draft != initialDraft || editor.revision > 0 }
     var canSave: Bool {
         !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving && !isImporting && !finished
-            && editor.errorMessage == nil
+            && editor.errorMessage == nil && draft.dueDate != nil && draft.dueTime != nil
     }
 
     func save(using viewModel: TasksViewModel) async -> Bool {

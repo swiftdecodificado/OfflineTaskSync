@@ -85,7 +85,6 @@ struct FreePersistenceTests {
         await model.refresh()
         let lastDate = Date.now.addingTimeInterval(172800)
         model.editDueDate(id: id, date: .now)
-        model.editDueDate(id: id, date: nil)
         model.editDueDate(id: id, date: lastDate)
         await model.flushTitleEdits()
         try disk.disconnect()
@@ -93,8 +92,8 @@ struct FreePersistenceTests {
         let task = try #require(try await reader.snapshot(id: id))
         #expect(task.dueDate == Calendar.current.startOfDay(for: lastDate))
         #expect(task.reminderDate == reminder)
-        try await reader.setDueDate(id: id, date: nil)
-        #expect(try await reader.snapshot(id: id)?.dueDate == nil)
+        await #expect(throws: TaskScheduleError.self) { try await reader.setDueDate(id: id, date: nil) }
+        #expect(try await reader.snapshot(id: id)?.dueDate == task.dueDate)
         #expect(try await reader.snapshot(id: id)?.reminderDate == reminder)
     }
 
@@ -108,6 +107,7 @@ struct FreePersistenceTests {
         let id = UUID()
         try await first.createTask(id: id, title: "Private local task")
         #expect(try await second.allTasks().isEmpty)
+        let original = try await first.snapshot(id: id)
         fail = true
         do {
             try await first.setDueDate(id: id, date: .now)
@@ -117,7 +117,7 @@ struct FreePersistenceTests {
             try await first.setReminderDate(id: id, date: .now)
             Issue.record("Expected reminder save failure")
         } catch { }
-        #expect(try await first.snapshot(id: id)?.dueDate == nil)
+        #expect(try await first.snapshot(id: id)?.dueDate == original?.dueDate)
         #expect(try await first.snapshot(id: id)?.reminderDate == nil)
     }
 

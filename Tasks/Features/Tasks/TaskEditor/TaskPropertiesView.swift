@@ -36,8 +36,6 @@ struct TaskPropertiesView: View {
                 case .date:
                     DatePicker("Data", selection: Binding(get: { session.draft.dueDate ?? .now }, set: setDay), displayedComponents: .date)
                         .datePickerStyle(.graphical)
-                    Button("Remover data", role: .destructive) { setDay(nil); closeProperty() }
-                        .disabled(session.draft.dueDate == nil)
                 case .time:
                     if session.draft.dueDate == nil {
                         Text("Escolha uma data para definir o horário.")
@@ -49,8 +47,6 @@ struct TaskPropertiesView: View {
                     if let start = session.draft.dueTime {
                         TaskEndTimePicker(end: $session.draft.dueEndTime, start: start)
                     }
-                    Button("Remover horário", role: .destructive) { session.draft.dueTime = nil; session.draft.dueEndTime = nil; closeProperty() }
-                        .disabled(session.draft.dueTime == nil)
                 case .reminder:
                     DatePicker("Lembrete", selection: Binding(get: { session.draft.reminderDate ?? .now.addingTimeInterval(3600) }, set: { session.draft.reminderDate = $0 }), displayedComponents: [.date, .hourAndMinute])
                     Button("Remover lembrete", role: .destructive) { session.draft.reminderDate = nil; closeProperty() }
@@ -125,7 +121,7 @@ struct TaskPropertiesView: View {
                 } else {
                     inlineAdd("Definir data") { setDefault(.date) }
                 }
-            } add: { setDefault(.date) } clear: { setDay(nil) }
+            } add: { setDefault(.date) }
             Divider()
                 .padding(.leading, Theme.Layout.cardInset + Theme.Metrics.checkboxSize + Theme.Layout.iconSpacing)
                 .padding(.trailing, Theme.Layout.cardInset)
@@ -140,7 +136,7 @@ struct TaskPropertiesView: View {
                 } else {
                     inlineAdd("Definir horário") { setDefault(.time) }
                 }
-            } add: { setDefault(.time) } clear: { session.draft.dueTime = nil; session.draft.dueEndTime = nil }
+            } add: { setDefault(.time) }
             Divider()
                 .padding(.leading, Theme.Layout.cardInset + Theme.Metrics.checkboxSize + Theme.Layout.iconSpacing)
                 .padding(.trailing, Theme.Layout.cardInset)
@@ -192,7 +188,7 @@ struct TaskPropertiesView: View {
     private func inlineProperty<Content: View>(_ property: Property, symbol: String, isSet: Bool,
                                                @ViewBuilder content: () -> Content,
                                                add: @escaping () -> Void,
-                                               clear: @escaping () -> Void) -> some View {
+                                               clear: (() -> Void)? = nil) -> some View {
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xxs))
             : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.xs))
@@ -205,18 +201,20 @@ struct TaskPropertiesView: View {
                 .accessibilityHidden(true)
             content()
                 .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget, alignment: .leading)
-            Button(action: isSet ? clear : add) {
-                Image(systemName: isSet ? "xmark.circle.fill" : "plus.circle")
-                    .font(Theme.Typography.headline)
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                    .foregroundStyle(isSet ? Theme.textSecondary : Theme.accent)
-                    .frame(width: Theme.Metrics.minTouchTarget, height: Theme.Metrics.minTouchTarget)
-                    .contentShape(Rectangle())
+            if !isSet || clear != nil {
+                Button(action: { if isSet { clear?() } else { add() } }) {
+                    Image(systemName: isSet ? "xmark.circle.fill" : "plus.circle")
+                        .font(Theme.Typography.headline)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .foregroundStyle(isSet ? Theme.textSecondary : Theme.accent)
+                        .frame(width: Theme.Metrics.minTouchTarget, height: Theme.Metrics.minTouchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isSet
+                    ? Text("Remover: \(title(for: property))")
+                    : Text("Adicionar: \(title(for: property))"))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isSet
-                ? Text("Remover: \(title(for: property))")
-                : Text("Adicionar: \(title(for: property))"))
         }
         .frame(minHeight: Theme.Metrics.minTouchTarget)
         .padding(.vertical, Theme.Spacing.xxs)
@@ -287,17 +285,12 @@ struct TaskPropertiesView: View {
         }
     }
 
-    private func setDay(_ day: Date?) {
-        session.draft.dueDate = day.map { Calendar.current.startOfDay(for: $0) }
-        if let day, let time = session.draft.dueTime {
+    private func setDay(_ day: Date) {
+        session.draft.dueDate = Calendar.current.startOfDay(for: day)
+        if let time = session.draft.dueTime {
             let start = combined(day: day, time: time)
             session.draft.dueEndTime = TaskSchedule.shiftedEnd(from: session.draft.dueTime, end: session.draft.dueEndTime, to: start)
             session.draft.dueTime = start
-        } else if day == nil {
-            session.draft.dueTime = nil
-            session.draft.dueEndTime = nil
-            session.draft.addToCalendar = false
-            session.draft.calendarID = nil
         }
     }
 

@@ -83,7 +83,7 @@ struct TaskCreationTests {
         #expect(try await store.allTasks().count == 1)
     }
 
-    @Test func newTaskStartsOnCreationDayWithoutRequestingNotificationPermission() async throws {
+    @Test func newTaskStartsWithDateAndTimeWithoutRequestingNotificationPermission() async throws {
         let store = SwiftDataTaskRepository(store: try PersistenceContainer(inMemory: true))
         let center = ReminderCenterDouble()
         center.status = .notDetermined
@@ -94,7 +94,9 @@ struct TaskCreationTests {
         await model.flushTitleEdits()
         let task = try #require(try await store.snapshot(id: draft.id))
         #expect(task.dueDate == Calendar.current.startOfDay(for: .now))
-        #expect(task.dueTime == nil)
+        #expect(task.dueTime == draft.dueTime)
+        let defaultTime = try #require(task.dueTime)
+        #expect(abs(defaultTime.timeIntervalSinceNow) < 120)
         #expect(task.reminderDate == nil)
         #expect(center.permissionRequests == 0)
     }
@@ -116,20 +118,22 @@ struct TaskCreationTests {
         #expect(session.draft.dueDate == creationDay)
     }
 
-    @Test func selectedAndRemovedDatesStayUnderUserControl() async throws {
+    @Test func chosenDatePersistsAndCannotBeRemoved() async throws {
         let store = SwiftDataTaskRepository(store: try PersistenceContainer(inMemory: true))
         var draft = TaskDraft()
         draft.title = "Chosen day"
         let selectedDay = try #require(Calendar.current.date(byAdding: .day, value: 3, to: Calendar.current.startOfDay(for: .now)))
         draft.dueDate = selectedDay
         try await store.saveDraft(draft, creating: true)
-        #expect(try await store.snapshot(id: draft.id)?.dueDate == selectedDay)
+        let chosen = try #require(try await store.snapshot(id: draft.id))
+        #expect(chosen.dueDate == selectedDay)
+        #expect(Calendar.current.isDate(try #require(chosen.dueTime), inSameDayAs: selectedDay))
         draft.dueDate = nil
-        try await store.saveDraft(draft, creating: false)
+        await #expect(throws: TaskScheduleError.self) { try await store.saveDraft(draft, creating: false) }
         let saved = try #require(try await store.snapshot(id: draft.id))
-        #expect(saved.dueDate == nil)
+        #expect(saved.dueDate == selectedDay)
         let session = TaskEditingSession(task: saved, mediaStore: makeTestMediaStore())
-        #expect(session.draft.dueDate == nil)
+        #expect(session.draft.dueDate == selectedDay)
     }
 
     @Test func movingDeadlineKeepsDueTimeAndIndependentReminder() async throws {
@@ -150,8 +154,26 @@ struct TaskCreationTests {
         #expect(task.dueTime.map { Calendar.current.component(.hour, from: $0) } == draft.dueTime.map { Calendar.current.component(.hour, from: $0) })
         model.editDueDate(id: draft.id, date: nil)
         await model.flushTitleEdits()
-        #expect(try await store.snapshot(id: draft.id)?.dueTime == nil)
+        #expect(model.failure == .update)
+        #expect(try await store.snapshot(id: draft.id)?.dueTime == task.dueTime)
         #expect(try await store.snapshot(id: draft.id)?.reminderDate == draft.reminderDate)
+    }
+
+    @Test func missingDateOrTimeCannotBeSavedThroughTheEditorOrRepository() async throws {
+        let store = SwiftDataTaskRepository(store: try PersistenceContainer(inMemory: true))
+        for missingDate in [false, true] {
+            var draft = TaskDraft()
+            draft.title = "Required schedule"
+            if missingDate { draft.dueDate = nil } else { draft.dueTime = nil }
+            let session = TaskEditingSession(draft: draft, mediaStore: makeTestMediaStore())
+            #expect(!session.canSave)
+            await #expect(throws: TaskScheduleError.self) { try await store.saveDraft(draft, creating: true) }
+            await #expect(throws: TaskScheduleError.self) {
+                try await store.createTask(id: draft.id, title: draft.title, notes: "", dueDate: draft.dueDate,
+                                           dueTime: draft.dueTime, reminderDate: nil, icon: nil)
+            }
+            #expect(try await store.snapshot(id: draft.id) == nil)
+        }
     }
 
     @Test func migratesV2WithDatesAndCalendarLinkIntact() async throws {

@@ -6,11 +6,6 @@ struct DeadlineEditor: View {
 
     var body: some View {
         Group {
-            Toggle("Deadline", isOn: Binding(
-                get: { viewModel.task(id: taskID)?.dueDate != nil },
-                set: { enabled in viewModel.editDueDate(id: taskID, date: enabled ? .now : nil) }
-            ))
-            .frame(minHeight: Theme.Metrics.minTouchTarget)
             if let date = viewModel.task(id: taskID)?.dueDate {
                 DatePicker("Due date", selection: Binding(
                     get: { viewModel.task(id: taskID)?.dueDate ?? date },
@@ -25,8 +20,6 @@ struct DeadlineEditor: View {
                     ), displayedComponents: .hourAndMinute)
                     .tint(Theme.nativeSelection)
                     .frame(minHeight: Theme.Metrics.minTouchTarget)
-                    Button("Remove due time") { viewModel.editDueTime(id: taskID, date: nil) }
-                        .frame(minHeight: Theme.Metrics.minTouchTarget)
                 } else {
                     Button { viewModel.editDueTime(id: taskID, date: .now) } label: {
                         Text("Add due time")
@@ -36,6 +29,10 @@ struct DeadlineEditor: View {
                     }
                     .buttonStyle(.plain)
                 }
+            } else {
+                DatePicker("Due date", selection: Binding(
+                    get: { .now }, set: { viewModel.editDueDate(id: taskID, date: $0) }
+                ), displayedComponents: .date)
             }
         }
         .font(Theme.Typography.body)

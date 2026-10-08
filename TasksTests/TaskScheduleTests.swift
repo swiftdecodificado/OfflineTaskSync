@@ -131,7 +131,7 @@ import Testing
         #expect(archive.tasks.first?.dueEndTime == draft.dueEndTime)
     }
 
-    @Test func reschedulingPreservesDurationAndRemovingTimeClearsTheEnd() async throws {
+    @Test func reschedulingPreservesDurationAndRejectsRemovingTheSchedule() async throws {
         let store = SwiftDataTaskRepository(store: try PersistenceContainer(inMemory: true))
         var draft = TaskDraft()
         draft.title = "Move me"
@@ -148,10 +148,10 @@ import Testing
         try await store.setDueTime(id: draft.id, date: cal.date(bySettingHour: 23, minute: 45, second: 0, of: tomorrow))
         let last = try #require(try await store.snapshot(id: draft.id))
         #expect(last.dueEndTime == cal.date(byAdding: .day, value: 1, to: tomorrow))
-        try await store.setDueDate(id: draft.id, date: nil)
-        let cleared = try #require(try await store.snapshot(id: draft.id))
-        #expect(cleared.dueTime == nil)
-        #expect(cleared.dueEndTime == nil)
+        await #expect(throws: TaskScheduleError.self) { try await store.setDueDate(id: draft.id, date: nil) }
+        await #expect(throws: TaskScheduleError.self) { try await store.setDueTime(id: draft.id, date: nil) }
+        let unchanged = try #require(try await store.snapshot(id: draft.id))
+        #expect(unchanged == last)
     }
 
     @Test func invalidEndAndSaveFailureKeepTheOriginalTask() async throws {
