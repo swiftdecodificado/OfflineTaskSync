@@ -31,12 +31,13 @@ struct TaskQuery {
     var search = ""
     var selectedDay: Date?
     var includeCompleted = false
+    var dateScope: TaskDateScope = .any
 
     func results(in tasks: [TaskSnapshot], now: Date = .now, calendar: Calendar = .current) -> [TaskSnapshot] {
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
         let text = search.trimmingCharacters(in: .whitespacesAndNewlines)
         return tasks.filter { task in
-            guard category.includes(task) else { return false }
+            guard category.includes(task), dateScope.includes(task, now: now, calendar: calendar) else { return false }
             switch collection {
             case .today:
                 guard (!task.isDone || includeCompleted), let date = task.dueDate else { return false }
