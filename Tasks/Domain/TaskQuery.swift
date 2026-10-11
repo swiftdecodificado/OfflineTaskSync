@@ -2,7 +2,7 @@ import Foundation
 
 enum TaskCollection: String, CaseIterable, Identifiable {
     case today = "Today"
-    case upcoming = "Upcoming"
+    case upcoming = "Calendário"
     case all = "All"
     case completed = "Completed"
 

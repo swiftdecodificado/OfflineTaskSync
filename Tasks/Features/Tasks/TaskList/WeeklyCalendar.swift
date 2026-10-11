@@ -9,10 +9,9 @@ struct WeeklyCalendar: View {
     let onMoveWeek: (Int) -> Void
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
-    @ScaledMetric(relativeTo: .footnote) private var dayWidth = Theme.Metrics.minTouchTarget
+    private let dayWidth = Theme.Metrics.minTouchTarget
 
     private var dateFormat: Date.FormatStyle {
         Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
@@ -24,34 +23,28 @@ struct WeeklyCalendar: View {
     }
 
     var body: some View {
-        let pendingDays = Set(tasks.compactMap { task in
-            task.isDone ? nil : task.dueDate.map { calendar.startOfDay(for: $0) }
-        })
-        VStack(spacing: Theme.Spacing.sm) {
-            ViewThatFits(in: .horizontal) {
-                weekStrip(pendingDays: pendingDays)
-                    .simultaneousGesture(weekSwipe)
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal) {
-                        weekStrip(pendingDays: pendingDays)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .scrollTargetLayout()
-                    }
-                    .scrollTargetBehavior(.viewAligned)
-                    .scrollIndicators(.visible)
-                    .accessibilityIdentifier("upcoming.week")
-                    .onAppear { proxy.scrollTo(selectedDay ?? anchor, anchor: .center) }
-                    .onChange(of: selectedDay) { _, day in
-                        if let day { proxy.scrollTo(day, anchor: .center) }
-                    }
+        let pendingDays = Dictionary(grouping: tasks.filter { !$0.isDone && $0.dueDate != nil }) {
+            calendar.startOfDay(for: $0.dueDate!)
+        }.mapValues(\.count)
+        ViewThatFits(in: .horizontal) {
+            weekStrip(pendingDays: pendingDays)
+                .simultaneousGesture(weekSwipe)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    weekStrip(pendingDays: pendingDays)
+                        .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.viewAligned)
+                .scrollIndicators(.visible)
+                .accessibilityIdentifier("upcoming.week")
+                .onAppear { proxy.scrollTo(selectedDay ?? anchor, anchor: .center) }
+                .onChange(of: selectedDay) { _, day in
+                    if let day { proxy.scrollTo(day, anchor: .center) }
                 }
             }
         }
-        .padding(.top, Theme.Spacing.xs)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .contain)
-        .accessibilityAction(named: Text("Previous week")) { onMoveWeek(-1) }
-        .accessibilityAction(named: Text("Next week")) { onMoveWeek(1) }
         .foregroundStyle(Theme.textPrimary)
     }
 
@@ -64,24 +57,23 @@ struct WeeklyCalendar: View {
         }
     }
 
-    private func weekStrip(pendingDays: Set<Date>) -> some View {
-        HStack(alignment: .top, spacing: dynamicTypeSize.isAccessibilitySize ? Theme.Spacing.md : Theme.Spacing.xxs) {
+    private func weekStrip(pendingDays: [Date: Int]) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: dayWidth), spacing: Theme.Spacing.xxs), count: 7)) {
             ForEach(days, id: \.self) { day in
-                dayButton(day, hasTasks: pendingDays.contains(calendar.startOfDay(for: day)))
-                    .frame(minWidth: dayWidth, maxWidth: .infinity)
+                dayButton(day, taskCount: pendingDays[calendar.startOfDay(for: day), default: 0])
                     .id(day)
             }
         }
+        .frame(minWidth: dayWidth * 7 + Theme.Spacing.xxs * 6)
     }
 
-    private func dayButton(_ day: Date, hasTasks: Bool) -> some View {
+    private func dayButton(_ day: Date, taskCount: Int) -> some View {
         let isToday = calendar.isDate(day, inSameDayAs: now)
         let isSelected = selectedDay.map { calendar.isDate(day, inSameDayAs: $0) } ?? false
         return Button { onSelect(day) } label: {
             VStack(spacing: Theme.Spacing.xs) {
-                Text(day, format: dynamicTypeSize.isAccessibilitySize
-                     ? dateFormat.weekday(.wide) : dateFormat.weekday(.abbreviated))
-                    .font(Theme.Typography.metadata)
+                Text(day, format: dateFormat.weekday(.abbreviated))
+                    .font(Theme.Typography.footnote)
                     .foregroundStyle(Theme.textPrimary)
                     .fixedSize()
 
@@ -89,8 +81,8 @@ struct WeeklyCalendar: View {
                     .font(Theme.Typography.numeric.weight(isSelected ? .semibold : .regular))
                     .underline(isSelected && differentiateWithoutColor)
                     .foregroundStyle(isSelected ? Theme.Planner.selectedDayContent : Theme.textPrimary)
-                    .frame(width: dayWidth, height: dayWidth)
-                    .background(isSelected ? Theme.Planner.selectedDay : Theme.surfaceSecondary, in: Circle())
+                    .frame(width: dayWidth - Theme.Spacing.xs, height: dayWidth - Theme.Spacing.xs)
+                    .background(isSelected ? Theme.Planner.selectedDay : Color.clear, in: Circle())
                     .overlay {
                         if isToday {
                             Circle().strokeBorder(isSelected ? Theme.Planner.selectedDayContent : Theme.textPrimary, lineWidth: Theme.Metrics.checkboxStroke)
@@ -98,21 +90,27 @@ struct WeeklyCalendar: View {
                     }
 
                 Circle()
-                    .fill(Theme.textSecondary)
+                    .fill(taskCount > 0 ? Theme.accent : Color.clear)
                     .frame(width: Theme.Spacing.xxs, height: Theme.Spacing.xxs)
-                    .opacity(hasTasks ? 1 : 0)
+                    .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(day, format: dateFormat.weekday(.wide).day().month(.wide).year()))
         .accessibilityValue(Text(verbatim: [
             isToday ? AppLocalization.string("Today") : nil,
-            hasTasks ? AppLocalization.string("Has tasks") : AppLocalization.string("No tasks")
+            AppLocalization.string("\(taskCount) tasks")
         ].compactMap { $0 }.joined(separator: ", ")))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("upcoming.day.\(calendar.component(.weekday, from: day))")
+        .accessibilityHint("Shows tasks for this day.")
+        .accessibilityShowsLargeContentViewer {
+            VStack {
+                Text(day, format: dateFormat.weekday(.wide).day().month(.wide))
+                Text("\(taskCount) tasks")
+            }
+        }
     }
 }

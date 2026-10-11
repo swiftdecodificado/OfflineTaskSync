@@ -1,26 +1,21 @@
 import SwiftUI
 
-enum UpcomingDisplayMode: String, CaseIterable, Identifiable {
-    case agenda = "Agenda"
-    case list = "Lista"
-    case overview = "All upcoming tasks"
-    var id: Self { self }
-}
-
 struct UpcomingView: View {
     let now: Date
     @Binding var selectedDay: Date?
     @Binding var showingDatePicker: Bool
-    @Binding var categoryFilter: TaskCategoryFilter
     let onCreateAtTime: (Date) -> Void
+    let onCreateOnDay: (Date) -> Void
+    let onProfile: () -> Void
     let onReminders: () -> Void
+    let onOpen: (UUID) -> Void
     let onEdit: (UUID) -> Void
     let onDeadline: (TaskSnapshot) -> Void
     @Environment(TasksViewModel.self) private var viewModel
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var mode: UpcomingDisplayMode = .agenda
+    @State private var period: CalendarPeriod = .week
     @State private var pickerDate = Date.now
 
     private var day: Date { calendar.startOfDay(for: selectedDay ?? now) }
@@ -29,32 +24,38 @@ struct UpcomingView: View {
     }
 
     var body: some View {
-        let dailyTasks = TaskQuery(collection: .upcoming, category: categoryFilter, selectedDay: day)
-            .results(in: viewModel.tasks, now: now, calendar: calendar).filter { $0.dueTime != nil }
+        let plan = CalendarPlan(tasks: viewModel.tasks, day: day, period: period, calendar: calendar)
+        let scheduledDays = plan.days.filter { !$0.tasks.isEmpty }
+        let dailyTasks = TaskQuery(collection: .upcoming, selectedDay: day)
+            .results(in: viewModel.tasks, now: now, calendar: calendar)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
                 header
-                TaskCategoryStrip(selection: $categoryFilter)
-                if mode != .overview {
-                    calendarNavigation
-                    WeeklyCalendar(now: now, anchor: day, selectedDay: day, tasks: viewModel.tasks.filter { categoryFilter.includes($0) && $0.dueTime != nil },
-                               onSelect: selectDay, onMoveWeek: { moveDay($0 * 7) })
-                    dayHeading
+                periodPicker
+                calendarNavigation
+                if period == .month {
+                    MonthlyCalendar(now: now, anchor: day, tasks: viewModel.tasks, onSelect: selectDay)
+                } else if period == .week {
+                    WeeklyCalendar(now: now, anchor: day, selectedDay: day, tasks: viewModel.tasks,
+                                   onSelect: openDay, onMoveWeek: { move(.week, by: $0) })
                 }
                 PersistenceErrorBanner()
                 if !viewModel.hasLoadedTasks {
                     ProgressView("Loading tasks")
-                } else if mode == .agenda {
-                    Text("Tap a time to plan a task.")
-                        .font(Theme.Typography.metadata)
-                        .foregroundStyle(Theme.textSecondary)
-                    UpcomingAgendaView(tasks: dailyTasks, day: day, now: now,
-                                       onEdit: onEdit, onDeadline: onDeadline, onCreateAtTime: onCreateAtTime)
-                } else if mode == .list {
-                    if dailyTasks.isEmpty { emptyState("Nothing planned for this day.") }
-                    else { planningRows(dailyTasks) }
+                } else if period == .week {
+                    if scheduledDays.isEmpty {
+                        emptyWeek
+                    } else {
+                        ForEach(scheduledDays) { group in
+                            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                weekDayHeading(group.date, count: group.tasks.count)
+                                compactAgenda(group.tasks, on: group.date, showsPlanningActions: false)
+                            }
+                        }
+                    }
                 } else {
-                    futureList
+                    dayHeading(count: dailyTasks.count)
+                    compactAgenda(dailyTasks, on: day, showsTimeGrid: period == .day)
                 }
             }
         }
@@ -96,35 +97,25 @@ struct UpcomingView: View {
     }
 
     private var header: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.sm))
-        return layout {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                Text("Próximas tarefas")
-                    .font(Theme.Typography.sectionTitle)
-                    .accessibilityAddTraits(.isHeader)
-                Text(LocalizedStringKey(mode.rawValue))
-                    .font(Theme.Typography.metadata)
-                    .foregroundStyle(Theme.textSecondary)
-                if mode == .overview && categoryFilter != .all {
-                    Text(categoryFilter.title)
-                        .font(Theme.Typography.metadata)
-                        .foregroundStyle(Theme.textSecondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: Theme.Spacing.sm) {
+            Text("Calendário")
+                .font(Theme.Typography.screenTitle)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Menu {
-                displayModePicker
-                Button("Today") { selectDay(now); mode = .agenda }
+                Button("Ajustes e perfil", systemImage: "person.crop.circle", action: onProfile)
+                    .accessibilityIdentifier("settings.open")
                 Button("Reminders", systemImage: "bell", action: onReminders)
             } label: {
                 Label("Planning options", systemImage: "ellipsis")
                     .labelStyle(.iconOnly)
                     .font(Theme.Typography.toolbarIcon)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget)
+                    .contentShape(Rectangle())
             }
-            .accessibilityValue(Text("\(Text(LocalizedStringKey(mode.rawValue))), \(categoryFilter.title)"))
+            .accessibilityValue(Text(LocalizedStringKey(period.rawValue)))
             .accessibilityIdentifier("upcoming.options")
         }
         .foregroundStyle(Theme.textPrimary)
@@ -132,121 +123,167 @@ struct UpcomingView: View {
 
     private var calendarNavigation: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xxs))
             : AnyLayout(HStackLayout(spacing: Theme.Spacing.xs))
         return layout {
             dateButton
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: Theme.Spacing.xs) }
-            weekControls
+            periodControls
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+
+    private var periodDate: Text {
+        switch period {
+        case .day:
+            Text(day, format: dateFormat.weekday(.abbreviated).day().month(.abbreviated))
+        case .week:
+            if let interval = calendar.dateInterval(of: .weekOfYear, for: day),
+               let end = calendar.date(byAdding: .day, value: -1, to: interval.end) {
+                Text("\(Text(interval.start, format: dateFormat.day().month(.abbreviated))) – \(Text(end, format: dateFormat.day().month(.abbreviated)))")
+            } else {
+                Text(day, format: dateFormat.month(.wide).year())
+            }
+        case .month:
+            Text(day, format: dateFormat.month(.wide).year())
         }
     }
 
     private var dateButton: some View {
         Button { showingDatePicker = true } label: {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.xs) {
-                Image(systemName: "calendar")
-                    .foregroundStyle(Theme.accent)
-                    .accessibilityHidden(true)
-                Text(day, format: dateFormat.month(.wide).year())
-                    .foregroundStyle(Theme.textPrimary)
+            HStack(spacing: Theme.Spacing.xs) {
+                periodDate
                     .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.down")
+                    .font(Theme.Typography.footnote)
+                    .accessibilityHidden(true)
             }
             .font(Theme.Typography.metadataEmphasis)
             .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Calendário")
-        .accessibilityValue(Text(day, format: dateFormat.month(.wide).year()))
+        .foregroundStyle(Theme.textPrimary)
+        .accessibilityLabel("Choose date")
+        .accessibilityValue(periodDate)
         .accessibilityIdentifier("upcoming.chooseDate")
     }
 
-    private var weekControls: some View {
+    private var periodControls: some View {
         HStack(spacing: Theme.Spacing.xs) {
-            weekButton("Previous week", symbol: "chevron.backward", offset: -1)
-                .accessibilityIdentifier("upcoming.previousWeek")
-            weekButton("Next week", symbol: "chevron.forward", offset: 1)
-                .accessibilityIdentifier("upcoming.nextWeek")
+            Button { selectDay(now) } label: {
+                Text("Today")
+                    .font(Theme.Typography.metadataEmphasis)
+                    .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("upcoming.today")
+            periodButton(previous: true)
+            periodButton(previous: false)
         }
+        .foregroundStyle(Theme.textPrimary)
     }
 
-    private func weekButton(_ title: LocalizedStringKey, symbol: String, offset: Int) -> some View {
-        Button { moveDay(offset * 7) } label: {
-            Label(title, systemImage: symbol)
+    private func periodButton(previous: Bool) -> some View {
+        Button { move(period, by: previous ? -1 : 1) } label: {
+            Label(previous ? "Período anterior" : "Próximo período",
+                  systemImage: previous ? "chevron.backward" : "chevron.forward")
                 .labelStyle(.iconOnly)
+                .font(Theme.Typography.toolbarIcon)
                 .frame(width: Theme.Metrics.minTouchTarget, height: Theme.Metrics.minTouchTarget)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .font(Theme.Typography.toolbarIcon)
+        .accessibilityValue(Text(LocalizedStringKey(period.rawValue)))
+        .accessibilityIdentifier(previous ? "upcoming.previousPeriod" : "upcoming.nextPeriod")
+    }
+
+    private var periodPicker: some View {
+        Picker("Período", selection: $period) {
+            ForEach(CalendarPeriod.allCases) { period in
+                Text(LocalizedStringKey(period.rawValue)).tag(period)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("upcoming.period")
+    }
+
+    private func dayHeading(count: Int) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xxs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm))
+        return layout {
+            if period == .month {
+                Text(day, format: dateFormat.weekday(.wide).day().month(.wide))
+                    .font(Theme.Typography.headline)
+                    .accessibilityIdentifier("upcoming.selectedDate")
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Tasks").font(Theme.Typography.headline)
+            }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
+            Text("\(count) tasks")
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityAddTraits(.isHeader)
         .foregroundStyle(Theme.textPrimary)
     }
 
-    private var displayModePicker: some View {
-        Picker("Upcoming view", selection: $mode) {
-            ForEach(UpcomingDisplayMode.allCases) { mode in
-                Text(LocalizedStringKey(mode.rawValue)).tag(mode)
+    private func weekDayHeading(_ date: Date, count: Int) -> some View {
+        Button { openDay(date) } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(date, format: dateFormat.weekday(.wide).day().month(.abbreviated))
+                    .font(Theme.Typography.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: Theme.Spacing.xs)
+                Text(count, format: .number).font(Theme.Typography.numeric)
+                Image(systemName: "chevron.forward")
+                    .font(Theme.Typography.footnote)
+                    .accessibilityHidden(true)
             }
+            .frame(minHeight: Theme.Metrics.minTouchTarget)
+            .contentShape(Rectangle())
         }
-        .frame(minHeight: Theme.Metrics.minTouchTarget)
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.textPrimary)
+        .accessibilityValue(Text("\(count) tasks"))
+        .accessibilityHint("Shows tasks for this day.")
+        .accessibilityIdentifier("upcoming.openDay.\(date.timeIntervalSince1970)")
     }
 
-    private var dayHeading: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-            Text(day, format: dateFormat.weekday(.wide).day().month(.wide))
+    private var emptyWeek: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("No tasks this week")
                 .font(Theme.Typography.headline)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("upcoming.selectedDate")
-            if categoryFilter != .all {
-                Text(categoryFilter.title)
-                    .font(Theme.Typography.metadata)
-                    .foregroundStyle(Theme.textSecondary)
-            }
+            Text("Choose a day to plan a task.")
+                .font(Theme.Typography.metadata)
+                .foregroundStyle(Theme.textSecondary)
         }
         .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, Theme.Spacing.lg)
         .foregroundStyle(Theme.textPrimary)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("upcoming.emptyWeek")
     }
 
-    private func planningRows(_ tasks: [TaskSnapshot]) -> some View {
-        ForEach(tasks) { task in
-            TaskRow(task: task, now: now, showNotes: false, showsCategory: false,
-                    showsDate: false, showsReminder: false,
-                    onDeadline: { onDeadline(task) }, onEdit: { onEdit(task.id) })
-        }
+    private func compactAgenda(_ tasks: [TaskSnapshot], on date: Date, showsTimeGrid: Bool = false,
+                               showsPlanningActions: Bool = true) -> some View {
+        UpcomingAgendaView(tasks: tasks, day: date, now: now, showsTimeGrid: showsTimeGrid,
+                           showsPlanningActions: showsPlanningActions,
+                           onOpen: onOpen, onEdit: onEdit, onDeadline: onDeadline, onCreateAtTime: onCreateAtTime,
+                           onCreateOnDay: { selectDay(date); onCreateOnDay(date) })
     }
 
-    @ViewBuilder private var futureList: some View {
-        let plan = UpcomingPlan(tasks: viewModel.tasks.filter { categoryFilter.includes($0) && $0.dueTime != nil }, now: now, calendar: calendar)
-        let days = plan.days
-        if days.isEmpty {
-            emptyState(categoryFilter == .all ? "No Upcoming Tasks" : "Nenhuma tarefa futura nesta categoria.")
-        } else {
-            ForEach(days) { group in
-                Section {
-                    ForEach(group.tasks) { task in
-                        TaskRow(task: task, now: now, onDeadline: { onDeadline(task) },
-                                onEdit: { onEdit(task.id) })
-                        .listRowBackground(Theme.background)
-                    }
-                } header: {
-                    Text(group.date, format: dateFormat.weekday(.wide).day().month(.wide).year())
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.textPrimary)
-                        .textCase(nil)
-                }
-            }
-        }
-    }
-
-    private func emptyState(_ title: LocalizedStringKey) -> some View {
-        Text(title)
-            .font(Theme.Typography.body)
-            .foregroundStyle(Theme.textSecondary)
-            .padding(.vertical, Theme.Spacing.lg)
+    private func openDay(_ date: Date) {
+        selectDay(date)
+        period = .day
     }
 
     private func selectDay(_ date: Date) { selectedDay = calendar.startOfDay(for: date) }
-    private func moveDay(_ offset: Int) {
-        if let date = calendar.date(byAdding: .day, value: offset, to: day) { selectDay(date) }
+    private func move(_ period: CalendarPeriod, by offset: Int) {
+        if let date = calendar.date(byAdding: period.component, value: offset, to: day) { selectDay(date) }
     }
 }

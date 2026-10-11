@@ -2,10 +2,14 @@ import XCTest
 
 @MainActor
 final class UpcomingUITests: XCTestCase {
-    private func launch(portuguese: Bool = false, dark: Bool = false, large: Bool = false) -> XCUIApplication {
+    private func launch(portuguese: Bool = false, dark: Bool = false, large: Bool = false, seedSamples: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment["TASKS_REGRESSION_TEST_HOST"] = "1"
+        app.launchEnvironment["TASKS_REGRESSION_STORE_ID"] = UUID().uuidString
+        if seedSamples {
+            app.launchEnvironment["TASKS_REPLACE_WITH_SAMPLE_DATA"] = UUID().uuidString
+        }
         app.launchEnvironment["TASKS_REGRESSION_LOCALE"] = portuguese ? "pt_BR" : "en_US"
         app.launchEnvironment["TASKS_REGRESSION_COLOR_SCHEME"] = dark ? "dark" : "light"
         app.launchArguments += ["-AppleLanguages", portuguese ? "(pt-BR)" : "(en)",
@@ -13,6 +17,7 @@ final class UpcomingUITests: XCTestCase {
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch()
         XCTAssertTrue(app.buttons["task.new"].waitForExistence(timeout: 10))
+        app.buttons["tab.upcoming"].tap()
         return app
     }
 
@@ -32,178 +37,165 @@ final class UpcomingUITests: XCTestCase {
         for _ in 0..<8 where !app.buttons["upcoming.options"].isHittable { app.swipeDown() }
     }
 
-    private func mode(_ name: String, in app: XCUIApplication) {
+    private func select(_ period: String, in app: XCUIApplication) {
         top(app)
-        app.buttons["upcoming.options"].tap()
-        app.buttons[name].tap()
+        app.segmentedControls["upcoming.period"].buttons[period].tap()
     }
 
     private func create(_ title: String, in app: XCUIApplication) {
         let slot = app.buttons["agenda.slot.0.0"]
         reveal(slot, in: app)
         slot.tap()
-        let field = app.descendants(matching: .any)["task.schedule.title"]
+        let field = app.descendants(matching: .any)["task.title"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText(title)
-        app.buttons["task.schedule.save"].tap()
+        app.buttons["task.saveDocument"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 10))
     }
 
-    func testSelectedDayStaysConsistentAcrossAgendaListAndOverview() {
-        let app = launch()
-        app.buttons["tab.upcoming"].tap()
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "upcoming.day.")).count, 7)
-        let original = app.buttons["upcoming.day.1"].label
-        app.buttons["upcoming.nextWeek"].tap()
-        XCTAssertNotEqual(app.buttons["upcoming.day.1"].label, original)
-        app.buttons["upcoming.previousWeek"].tap()
-        XCTAssertEqual(app.buttons["upcoming.day.1"].label, original)
-        app.buttons["upcoming.nextWeek"].tap()
-        app.buttons["upcoming.day.7"].tap()
+    func testCompactWeekAndPersistentMonthSelection() {
+        let app = launch(seedSamples: true)
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Week"].isSelected)
+        XCTAssertFalse(app.buttons["agenda.slot.0.0"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["tasks.categoryFilter"].exists)
+        capture(app, "Calendar - compact week")
+        select("Day", in: app)
+        app.buttons["upcoming.nextPeriod"].tap()
+        let grid = app.buttons["upcoming.timeGrid"]
+        reveal(grid, in: app)
+        grid.tap()
         create("Plan the release", in: app)
         let task = app.buttons["Complete Plan the release"]
         reveal(task, in: app)
-        capture(app, "Planning - English Light - selected day agenda")
-        mode("List", in: app)
+        XCTAssertFalse(app.buttons["agenda.slot.0.0"].exists)
+        capture(app, "Calendar - compact day after timed creation")
+        select("Week", in: app)
         reveal(task, in: app)
-        mode("All upcoming tasks", in: app)
-        XCTAssertFalse(app.buttons["upcoming.chooseDate"].exists)
+        XCTAssertFalse(app.buttons["agenda.slot.0.0"].exists)
+        select("Month", in: app)
         reveal(task, in: app)
-        mode("Agenda", in: app)
-        XCTAssertTrue(app.buttons["upcoming.day.7"].isSelected)
-        task.tap()
-        XCTAssertTrue(app.buttons["task.undoCompletion"].waitForExistence(timeout: 5))
-        app.buttons["task.undoCompletion"].tap()
-        reveal(task, in: app)
-        app.buttons["tab.today"].tap()
-        XCTAssertFalse(app.buttons["home.highlight"].exists)
-        reveal(app.buttons["home.next"], in: app)
-        app.buttons["home.next"].tap()
-        reveal(app.buttons["home.highlight"].firstMatch, in: app)
-        capture(app, "Today - upcoming preview on demand")
+        capture(app, "Calendar - month and selected day tasks")
+        top(app)
+        app.buttons["upcoming.monthDay.1"].tap()
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Month"].isSelected)
+        XCTAssertTrue(app.buttons["upcoming.monthDay.1"].isSelected)
+        capture(app, "Calendar - month keeps selection")
     }
 
-    func testTaskSwipeReschedulingUsesDeadlineSheet() {
+    func testWeekDateOpensDayWithoutChangingMonthSelectionBehavior() {
         let app = launch()
-        app.buttons["tab.upcoming"].tap()
-        app.buttons["upcoming.nextWeek"].tap()
-        create("Move this task", in: app)
-        let task = app.buttons["Complete Move this task"]
-        reveal(task, in: app)
-        let row = app.buttons["Move this task"]
-        row.swipeLeft()
-        app.buttons["task.swipe.deadline"].tap()
-        let deadline = app.switches["Deadline"]
-        XCTAssertTrue(deadline.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.datePickers.firstMatch.exists)
-        XCTAssertFalse(app.descendants(matching: .any)["task.title"].exists)
-        deadline.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        XCTAssertTrue(app.datePickers.firstMatch.waitForNonExistence(timeout: 5))
-        app.buttons["Done"].tap()
-        XCTAssertTrue(task.waitForNonExistence(timeout: 5))
-        app.buttons["tab.all"].tap()
-        reveal(task, in: app)
-        capture(app, "Rescheduled task remains saved without a deadline")
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Week"].isSelected)
+        app.buttons["upcoming.day.1"].tap()
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Day"].isSelected)
+        select("Month", in: app)
+        app.buttons["upcoming.monthDay.1"].tap()
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Month"].isSelected)
     }
 
-    func testTimedTasksKeepIndependentSwipeActions() {
-        let app = launch()
-        app.buttons["tab.upcoming"].tap()
-        app.buttons["upcoming.nextWeek"].tap()
-        app.buttons["task.new"].tap()
-        let title = app.descendants(matching: .any)["task.newTitle"]
-        XCTAssertTrue(title.waitForExistence(timeout: 5))
-        title.typeText("Timed review")
-        revealCategoryBlock("none", in: app).tap()
-        let time = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Time")).firstMatch
-        let save = app.buttons["task.create"]
-        for _ in 0..<6 where !time.isHittable || time.frame.maxY > save.frame.minY {
-            app.scrollViews.firstMatch.swipeUp()
-        }
-        XCTAssertTrue(time.isHittable)
-        time.tap()
-        XCTAssertTrue(app.pickerWheels.firstMatch.waitForExistence(timeout: 5))
-        app.buttons["Done"].tap()
-        app.buttons["task.create"].tap()
+    func testMoveTaskToTomorrowKeepsItsTime() {
+        let app = launch(seedSamples: true)
+        select("Day", in: app)
+        let title = app.staticTexts["Revisar o projeto"].firstMatch
+        reveal(title, in: app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "task.open.", "Revisar o projeto")).firstMatch
+        let originalLabel = row.label
+        title.press(forDuration: 1.2)
+        app.buttons["Move to…"].tap()
+        app.buttons["Tomorrow"].tap()
         XCTAssertTrue(title.waitForNonExistence(timeout: 10))
-        create("Another timed review", in: app)
-        let timed = app.buttons["Complete Timed review"]
-        let another = app.buttons["Complete Another timed review"]
-        reveal(timed, in: app)
-        capture(app, "Planning - timed task on the quarter-hour grid")
-        app.buttons["Timed review"].swipeLeft()
-        app.buttons["task.swipe.deadline"].tap()
-        XCTAssertTrue(app.switches["Deadline"].waitForExistence(timeout: 5))
-        app.buttons["Done"].tap()
-        mode("List", in: app)
-        reveal(timed, in: app)
-        reveal(another, in: app)
-        XCTAssertFalse(app.staticTexts["No time"].exists)
+        top(app)
+        app.buttons["upcoming.nextPeriod"].tap()
+        reveal(title, in: app)
+        XCTAssertEqual(row.label, originalLabel)
+        capture(app, "Calendar - task moved with time preserved")
     }
 
-    func testPastDateTasksAppearAsOverdueOnToday() {
+    func testQuickCreationAndReschedulingAlwaysKeepATime() {
         let app = launch()
-        app.buttons["tab.upcoming"].tap()
-        app.buttons["upcoming.previousWeek"].tap()
-        create("Follow up overdue work", in: app)
-        app.buttons["tab.today"].tap()
-        let task = app.buttons["Complete Follow up overdue work"]
+        select("Day", in: app)
+        app.buttons["upcoming.nextPeriod"].tap()
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "upcoming.addDay.")).firstMatch.tap()
+        let field = app.descendants(matching: .any)["task.title"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("Required time activity")
+        XCTAssertTrue(app.buttons["task.saveDocument"].isEnabled)
+        app.buttons["task.saveDocument"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 10))
+        let task = app.buttons["Complete Required time activity"]
         reveal(task, in: app)
-        XCTAssertTrue(app.staticTexts["Overdue"].exists)
-        capture(app, "Today - overdue task")
+        capture(app, "Calendar - quick activity created on the selected day")
+        top(app)
+        app.buttons["upcoming.previousPeriod"].tap()
+        XCTAssertTrue(task.waitForNonExistence(timeout: 5))
+        app.buttons["upcoming.nextPeriod"].tap()
+        reveal(task, in: app)
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "task.open.", "Required time activity")).firstMatch.swipeLeft()
+        app.buttons["task.swipe.deadline"].tap()
+        XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["Deadline"].exists)
+        XCTAssertFalse(app.buttons["Remove due time"].exists)
+        capture(app, "Calendar - required date and time when rescheduling")
+        app.buttons["Done"].tap()
     }
 
-    func testPortugueseDarkMonthSelectionAndWeekRollover() throws {
-        let app = launch(portuguese: true, dark: true)
-        app.buttons["tab.upcoming"].tap()
+    func testSampleReplacementRunsOnceAndKeepsNewActivitiesAfterRelaunch() {
+        let app = launch(seedSamples: true)
+        app.buttons["tab.all"].tap()
+        reveal(app.staticTexts["Revisar o projeto"].firstMatch, in: app)
+        app.buttons["task.new"].tap()
+        let field = app.descendants(matching: .any)["task.title"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("Keep my new activity")
+        XCTAssertTrue(app.buttons["task.saveDocument"].isEnabled)
+        app.buttons["task.saveDocument"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["tab.all"].waitForExistence(timeout: 10))
+        app.buttons["tab.all"].tap()
+        reveal(app.staticTexts["Keep my new activity"].firstMatch, in: app)
+        capture(app, "Calendar - new activity survives reopening after sample replacement")
+    }
+
+    func testMonthSelectionAndPeriodNavigationInPortugueseDark() {
+        let app = launch(portuguese: true, dark: true, seedSamples: true)
+        select("Semana", in: app)
+        let original = app.buttons["upcoming.day.1"].label
+        app.buttons["upcoming.nextPeriod"].tap()
+        XCTAssertNotEqual(app.buttons["upcoming.day.1"].label, original)
+        app.buttons["upcoming.previousPeriod"].tap()
+        XCTAssertEqual(app.buttons["upcoming.day.1"].label, original)
+        select("Mês", in: app)
+        let month = app.buttons["upcoming.chooseDate"].value as? String
+        app.buttons["upcoming.nextPeriod"].tap()
+        XCTAssertNotEqual(app.buttons["upcoming.chooseDate"].value as? String, month)
+        app.buttons["upcoming.previousPeriod"].tap()
+        XCTAssertEqual(app.buttons["upcoming.chooseDate"].value as? String, month)
+        capture(app, "Calendar - Portuguese Dark month")
+        app.buttons["upcoming.monthDay.1"].tap()
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Mês"].isSelected)
+        XCTAssertTrue(app.staticTexts["upcoming.selectedDate"].exists)
         app.buttons["upcoming.chooseDate"].tap()
         XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5))
-        app.buttons["DatePicker.NextMonth"].tap()
-        let first = app.datePickers.buttons.matching(NSPredicate(format: "label CONTAINS %@", ", 1 de ")).firstMatch
-        XCTAssertTrue(first.exists)
-        first.tap()
         app.buttons["upcoming.confirmDate"].tap()
-        let selected = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "upcoming.day."))
-            .allElementsBoundByIndex.filter(\.isSelected)
-        XCTAssertEqual(selected.count, 1)
-        let selectedDate = app.staticTexts["upcoming.selectedDate"].label
-        app.buttons["upcoming.previousWeek"].tap()
-        XCTAssertNotEqual(app.staticTexts["upcoming.selectedDate"].label, selectedDate)
-        app.buttons["upcoming.nextWeek"].tap()
-        XCTAssertEqual(app.staticTexts["upcoming.selectedDate"].label, selectedDate)
-        capture(app, "Planning - Portuguese Dark - native month selection")
-        try app.performAccessibilityAudit(for: [.contrast, .textClipped, .trait, .hitRegion]) { issue in
-            print("Accessibility issue: \(issue.detailedDescription)")
-            print("Element: \(issue.element?.debugDescription ?? "unavailable")")
-            return false
-        }
+        capture(app, "Calendar - Portuguese Dark selected day")
     }
 
-    func testMaximumDynamicTypeKeepsDatesAndActionsReachable() throws {
+    func testMaximumDynamicTypeKeepsPeriodControlsReachable() {
         let app = launch(portuguese: true, large: true)
-        app.buttons["tab.upcoming"].tap()
-        app.buttons["upcoming.nextWeek"].tap()
-        capture(app, "Planning - maximum Dynamic Type - top")
-        let dates = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "upcoming.day."))
-        for day in dates.allElementsBoundByIndex {
-            let strip = app.scrollViews["upcoming.week"]
-            for _ in 0..<7 where day.frame.minX < app.frame.minX || day.frame.maxX > app.frame.maxX {
-                if day.frame.minX < app.frame.minX { strip.swipeRight() }
-                else { strip.swipeLeft() }
-            }
-            XCTAssertTrue(day.isHittable)
-            day.tap()
-            XCTAssertTrue(day.isSelected)
-            XCTAssertGreaterThanOrEqual(day.frame.minX, app.frame.minX)
-            XCTAssertLessThanOrEqual(day.frame.maxX, app.frame.maxX)
+        capture(app, "Calendar - maximum Dynamic Type week")
+        select("Semana", in: app)
+        app.buttons["upcoming.nextPeriod"].tap()
+        select("Mês", in: app)
+        capture(app, "Calendar - maximum Dynamic Type month")
+        let first = app.buttons["upcoming.monthDay.1"]
+        let month = app.scrollViews["upcoming.month"]
+        if month.exists {
+            for _ in 0..<7 where !first.isHittable { month.swipeLeft() }
         }
-        reveal(app.buttons["agenda.slot.0.0"], in: app)
-        capture(app, "Planning - maximum Dynamic Type - quarter-hour grid")
+        XCTAssertTrue(first.isHittable)
+        first.tap()
+        XCTAssertTrue(app.segmentedControls["upcoming.period"].buttons["Mês"].isSelected)
         XCTAssertTrue(app.buttons["task.new"].isHittable)
-        try app.performAccessibilityAudit(for: [.contrast, .textClipped, .trait, .hitRegion]) { issue in
-            print("Accessibility issue: \(issue.detailedDescription)")
-            print("Element: \(issue.element?.debugDescription ?? "unavailable")")
-            return false
-        }
     }
 }

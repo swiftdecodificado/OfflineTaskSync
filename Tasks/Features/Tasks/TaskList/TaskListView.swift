@@ -214,7 +214,9 @@ private struct TaskCollectionView: View {
                                   onEdit: { openEditor($0) }) { deadlineTask = $0 }
                 } else if collection == .upcoming {
                     UpcomingView(now: context.date, selectedDay: $selectedUpcomingDay,
-                                 showingDatePicker: $showingDatePicker, categoryFilter: $categoryFilter, onCreateAtTime: onCreateAtTime, onReminders: { showingReminders = true },
+                                 showingDatePicker: $showingDatePicker, onCreateAtTime: onCreateAtTime,
+                                 onCreateOnDay: { onCreate(.upcoming, $0) }, onProfile: onSettings,
+                                 onReminders: { showingReminders = true }, onOpen: { openEditor($0) },
                                  onEdit: { openEditor($0) }) { deadlineTask = $0 }
                 } else {
                     collectionList(now: context.date)
