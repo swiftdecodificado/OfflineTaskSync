@@ -6,18 +6,24 @@ final class HomeProgressUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment["TASKS_REGRESSION_TEST_HOST"] = "1"
+        app.launchEnvironment["TASKS_REGRESSION_STORE_ID"] = UUID().uuidString
         app.launchEnvironment["TASKS_REGRESSION_COLOR_SCHEME"] = "dark"
         app.launchEnvironment["TASKS_REGRESSION_LOCALE"] = "en_US"
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         XCTAssertTrue(app.buttons["task.new"].waitForExistence(timeout: 10))
         let navigation = app.otherElements["app.navigation"]
-        XCTAssertEqual(navigation.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "tab.")).count, 3)
+        XCTAssertEqual(navigation.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "tab.")).count, 2)
         XCTAssertFalse(navigation.buttons["task.new"].exists)
-        for collection in ["today", "upcoming", "all"] {
+        for collection in ["all", "upcoming"] {
             let tab = navigation.buttons["tab.\(collection)"]
             tab.tap()
-            navigation.buttons["settings.open"].tap()
+            if collection == "upcoming" {
+                app.buttons["upcoming.options"].tap()
+            } else if collection == "all" {
+                app.buttons["collection.options"].tap()
+            }
+            app.buttons["settings.open"].tap()
             XCTAssertTrue(app.textFields["settings.profileName"].waitForExistence(timeout: 5))
             app.buttons["Done"].tap()
             XCTAssertTrue(tab.isSelected)
@@ -25,7 +31,7 @@ final class HomeProgressUITests: XCTestCase {
             XCTAssertTrue(create.isHittable)
             XCTAssertGreaterThanOrEqual(create.frame.minX, navigation.frame.maxX)
             create.tap()
-            let title = app.descendants(matching: .any)["task.newTitle"]
+            let title = app.textFields["task.title"]
             XCTAssertTrue(title.waitForExistence(timeout: 5))
             app.buttons["Close"].tap()
             XCTAssertTrue(title.waitForNonExistence(timeout: 5))

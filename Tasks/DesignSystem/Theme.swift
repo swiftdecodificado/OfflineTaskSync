@@ -77,6 +77,7 @@ enum Theme {
         static let progressFillDuration = 0.65
         static let taskCardWidth: CGFloat = 208
         static let taskCardMinHeight: CGFloat = 184
+        static let taskDeckMinHeight: CGFloat = 144
     }
 
     enum Editor {

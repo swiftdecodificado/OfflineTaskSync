@@ -2,76 +2,31 @@ import SwiftUI
 
 struct HomeProgressView: View {
     let progress: DayProgress
-    var categoryTitle: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xxs))
-                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Spacing.xs))
-            layout {
-                Image(systemName: "chart.bar.xaxis")
-                    .font(Theme.Typography.headline)
-                    .frame(width: Theme.Metrics.minTouchTarget, height: Theme.Metrics.minTouchTarget)
-                    .background(Theme.highlightContent.opacity(0.08), in: Circle())
-                    .accessibilityHidden(true)
-                Text(categoryTitle ?? AppLocalization.string("Seu dia"))
-                    .font(Theme.Typography.headline)
-                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
-                Text("Today")
-                    .font(Theme.Typography.footnote)
-                    .foregroundStyle(Theme.highlightContent)
-            }
-            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                Text("\(progress.completedCount) de \(progress.totalCount) concluídas")
-                    .font(Theme.Typography.sectionTitle)
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.highlightContent)
-                HStack(spacing: Theme.Spacing.xxs) {
-                    Text(progress.pendingCount, format: .number)
-                        .monospacedDigit()
-                    Text("Remaining")
-                }
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text("\(progress.completedCount) de \(progress.totalCount) concluídas")
                 .font(Theme.Typography.metadata)
-                .foregroundStyle(Theme.highlightContent)
-            }
-            bar("Completed", symbol: "checkmark.circle", count: progress.completedCount, color: Theme.highlightContent)
-            bar("Pending", symbol: "clock", count: progress.pendingCount, color: Theme.highlightContent.opacity(0.65))
-        }
-        .padding(Theme.Layout.cardInset)
-        .foregroundStyle(Theme.highlightContent)
-        .background(Theme.lime, in: RoundedRectangle(cornerRadius: Theme.Radius.composer))
-        .padding(.vertical, Theme.Spacing.xs)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(categoryTitle ?? AppLocalization.string("Seu dia")))
-        .accessibilityValue(Text("\(Text("Completed \(progress.completedCount) of \(progress.totalCount)")), \(Text("Remaining")): \(progress.pendingCount)"))
-        .accessibilityIdentifier("home.progress")
-    }
-
-    private func bar(_ title: LocalizedStringKey, symbol: String, count: Int, color: Color) -> some View {
-        let fraction = progress.totalCount == 0 ? 0 : Double(count) / Double(progress.totalCount)
-        return VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack(spacing: Theme.Spacing.xs) {
-                Label(title, systemImage: symbol)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: Theme.Spacing.xs)
-                Text(count, format: .number)
-                    .monospacedDigit()
-            }
-            .font(Theme.Typography.metadataEmphasis)
-            .foregroundStyle(Theme.highlightContent)
+                .monospacedDigit()
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             Capsule()
-                .fill(Theme.highlightContent.opacity(0.12))
+                .fill(Theme.surfaceSecondary)
                 .overlay {
-                    DailyProgressFill(fraction: fraction)
-                        .fill(color)
-                        .animation(reduceMotion ? nil : .smooth(duration: Theme.Home.progressFillDuration), value: fraction)
+                    DailyProgressFill(fraction: progress.fraction)
+                        .fill(Theme.accent)
+                        .animation(reduceMotion ? nil : .smooth(duration: Theme.Home.progressFillDuration),
+                                   value: progress.fraction)
                 }
-                .frame(height: Theme.Spacing.sm)
+                .frame(height: Theme.Spacing.xxs)
                 .accessibilityHidden(true)
         }
+        .padding(.bottom, Theme.Spacing.sm)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Seu dia")
+        .accessibilityValue(Text("Completed \(progress.completedCount) of \(progress.totalCount)"))
+        .accessibilityIdentifier("home.progress")
     }
 }
 

@@ -2,16 +2,13 @@ import SwiftUI
 
 struct AppNavigationBar: View {
     @Binding var selection: TaskCollection
-    let onProfile: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var selectionAnimation
 
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
-            destination(.today)
-            destination(.upcoming)
             destination(.all)
-            profile
+            destination(.upcoming)
         }
         .padding(Theme.Spacing.xs)
         .background(Theme.navigationBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.composer))
@@ -22,30 +19,21 @@ struct AppNavigationBar: View {
         .accessibilityIdentifier("app.navigation")
     }
 
-    private var profile: some View {
-        Button(action: onProfile) {
-            Image(systemName: "person.crop.circle")
-                .font(Theme.Typography.toolbarIcon)
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                .foregroundStyle(Theme.navigationContent)
-                .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Perfil")
-        .accessibilityIdentifier("settings.open")
-        .accessibilityShowsLargeContentViewer {
-            Label("Perfil", systemImage: "person.crop.circle")
-        }
-    }
-
     private func destination(_ collection: TaskCollection) -> some View {
-        let symbol = collection == .today ? "house" : collection == .all ? "list.bullet" : collection.symbol
+        let symbol = collection == .all ? "list.bullet" : collection.symbol
+        let title = LocalizedStringKey(collection == .all ? "Tasks" : collection.rawValue)
         return Button {
             selection = collection
         } label: {
-            Image(systemName: collection == .today && selection == collection ? "house.fill" : symbol)
-                .font(Theme.Typography.toolbarIcon)
+            VStack(spacing: Theme.Spacing.xxs) {
+                Image(systemName: symbol)
+                    .font(Theme.Typography.toolbarIcon)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget)
                 .foregroundStyle(selection == collection ? Theme.highlightContent : Theme.navigationContent)
@@ -59,11 +47,11 @@ struct AppNavigationBar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(LocalizedStringKey(collection.rawValue)))
+        .accessibilityLabel(Text(title))
         .accessibilityAddTraits(selection == collection ? .isSelected : [])
         .accessibilityIdentifier("tab.\(collection)")
         .accessibilityShowsLargeContentViewer {
-            Label(LocalizedStringKey(collection.rawValue), systemImage: symbol)
+            Label(title, systemImage: symbol)
         }
     }
 }
