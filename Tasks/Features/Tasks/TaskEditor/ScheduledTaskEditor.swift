@@ -54,6 +54,11 @@ struct ScheduledTaskEditor: View {
             .navigationTitle("Nova tarefa")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { titleFocused = false }
+                        .accessibilityIdentifier("task.schedule.dismissKeyboard")
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         if session.hasChanges { showingDiscard = true }

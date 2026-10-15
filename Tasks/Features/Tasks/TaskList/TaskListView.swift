@@ -258,7 +258,7 @@ private struct TaskCollectionView<BottomBar: View>: View {
                 }
             }
             .fullScreenCover(item: $editingTask) { task in
-                TaskDetailView(taskID: task.id)
+                TaskDetailView(taskID: task.id, startsEditing: task.startsEditing)
             }
         }
     }

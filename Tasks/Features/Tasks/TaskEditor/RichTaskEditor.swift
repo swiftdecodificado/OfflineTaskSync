@@ -356,6 +356,7 @@ final class RichTaskEditorState: NSObject, UITextViewDelegate {
     }
 
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        guard textView.isEditable else { return false }
         guard text == "\n", range.length == 0 else { return true }
         let source = textView.textStorage.string as NSString
         let paragraph = source.paragraphRange(for: NSRange(location: range.location, length: 0))
@@ -524,10 +525,18 @@ final class RichTaskEditorState: NSObject, UITextViewDelegate {
 
 struct RichTaskEditor: UIViewRepresentable {
     let state: RichTaskEditorState
+    var isEditable = true
 
-    func makeUIView(context: Context) -> UITextView { state.textView }
+    func makeUIView(context: Context) -> UITextView {
+        state.textView.isEditable = isEditable
+        return state.textView
+    }
     func updateUIView(_ uiView: UITextView, context: Context) {
         _ = state.revision
+        uiView.isEditable = isEditable
+        uiView.allowsEditingTextAttributes = isEditable
+        uiView.accessibilityHint = isEditable
+            ? AppLocalization.string("Escreva notas e insira mídia na posição do cursor.") : nil
         uiView.invalidateIntrinsicContentSize()
     }
 

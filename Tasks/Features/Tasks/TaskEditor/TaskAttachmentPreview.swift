@@ -7,6 +7,7 @@ struct TaskAttachmentPreview: View {
     let attachment: TaskAttachment
     let sessionID: UUID
     let mediaStore: TaskMediaStore
+    var allowsRemoval = true
     let onRemove: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var url: URL?
@@ -35,8 +36,10 @@ struct TaskAttachmentPreview: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Fechar") { dismiss() } }
-                ToolbarItem(placement: .destructiveAction) {
-                    Button("Remover anexo", systemImage: "trash", role: .destructive) { confirmingRemoval = true }
+                if allowsRemoval {
+                    ToolbarItem(placement: .destructiveAction) {
+                        Button("Remover anexo", systemImage: "trash", role: .destructive) { confirmingRemoval = true }
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {

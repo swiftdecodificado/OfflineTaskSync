@@ -46,9 +46,7 @@ final class FreeWorkflowUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         app.staticTexts["Plan the next release"].press(forDuration: 1)
         app.buttons["Change Due Date"].tap()
-        let deadline = app.switches["Deadline"]
-        XCTAssertTrue(deadline.waitForExistence(timeout: 5))
-        deadline.coordinate(withNormalizedOffset: .init(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertFalse(app.switches["Deadline"].exists)
         XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5))
         try audit(app)
         app.buttons["Done"].tap()
@@ -154,7 +152,7 @@ final class FreeWorkflowUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "task.newDueDate").firstMatch.waitForExistence(timeout: 5))
         app.buttons["Add due time"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "task.newDueTime").firstMatch.waitForExistence(timeout: 5))
-        attach(app, name: "Dark creation with optional due time")
+        attach(app, name: "Dark creation with required time")
         try audit(app)
         app.buttons["task.create"].tap()
         XCTAssertTrue(app.staticTexts["Task with details"].waitForExistence(timeout: 10))
@@ -179,7 +177,7 @@ final class FreeWorkflowUITests: XCTestCase {
         app.staticTexts["Task with an independent reminder"].tap()
         XCTAssertTrue(app.switches["Reminder"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.switches["Reminder"].value as? String, "1")
-        XCTAssertEqual(app.switches["Deadline"].value as? String, "0")
+        XCTAssertFalse(app.switches["Deadline"].exists)
     }
 
     func testTasksSurviveTerminatingAndRelaunchingTheProcess() {

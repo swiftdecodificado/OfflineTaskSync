@@ -56,11 +56,8 @@ final class TaskKeyboardToolbar: UIView {
         ])
         formattingButton = button(AppLocalization.string("Formatação"), symbol: "textformat")
         attachmentButton = button(AppLocalization.string("Adicionar anexo"), symbol: "paperclip")
-        addAction(AppLocalization.string("Categoria"), symbol: "tag", id: "task.iconPicker", event: .category)
-        addAction(AppLocalization.string("Data"), symbol: "calendar", id: "task.editor.date", event: .date)
-        addAction(AppLocalization.string("Horário"), symbol: "clock", id: "task.editor.time", event: .time)
-        addAction(AppLocalization.string("Lembrete"), symbol: "bell", id: "task.editor.reminder", event: .reminder)
-        addAction(AppLocalization.string("Adicionar ao calendário"), symbol: "calendar.badge.plus", id: "task.editor.calendar", event: .calendar)
+        formattingButton?.accessibilityIdentifier = "task.editor.formatting"
+        attachmentButton?.accessibilityIdentifier = "task.editor.attachments"
         let hide = button(AppLocalization.string("Ocultar teclado"), symbol: "keyboard.chevron.compact.down")
         hide.addAction(UIAction { [weak editor] _ in editor?.textView.resignFirstResponder() }, for: .touchUpInside)
         updateFormatting()
@@ -118,12 +115,6 @@ final class TaskKeyboardToolbar: UIView {
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: Theme.Editor.toolbarTouchTarget).isActive = true
         symbols.append((button, symbol))
         return button
-    }
-
-    private func addAction(_ title: String, symbol: String, id: String, event: TaskKeyboardAction) {
-        let button = button(title, symbol: symbol)
-        button.accessibilityIdentifier = id
-        button.addAction(action(title, symbol: symbol, event: event), for: .touchUpInside)
     }
 
     private func action(_ title: String, symbol: String, event: TaskKeyboardAction) -> UIAction {
