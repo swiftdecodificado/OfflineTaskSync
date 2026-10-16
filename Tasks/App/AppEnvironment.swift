@@ -34,6 +34,19 @@ final class AppEnvironment {
             fatalError("Failed to load persistent store: \(error)")
         }
 
+        #if DEBUG
+        if let token = ProcessInfo.processInfo.environment["TASKS_REPLACE_WITH_SAMPLE_DATA"],
+           !token.isEmpty,
+           UserDefaults.standard.string(forKey: "calendarSampleData.lastReplacement") != token {
+            do {
+                _ = try CalendarSampleData.replace(in: persistentStore)
+                UserDefaults.standard.set(token, forKey: "calendarSampleData.lastReplacement")
+            } catch {
+                fatalError("Failed to replace sample data: \(error)")
+            }
+        }
+        #endif
+
         let networkMonitor = NetworkMonitor(startMonitoring: !isRegressionTest)
         #if DEBUG
         if isRegressionTest { networkMonitor.setOnline(false) }
