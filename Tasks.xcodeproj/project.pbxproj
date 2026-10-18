@@ -388,6 +388,7 @@
 				DEVELOPMENT_TEAM = 26K88C3DWU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Tilo;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Choose a calendar and avoid adding the same task event twice. Your calendars are never uploaded.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -419,6 +420,7 @@
 				DEVELOPMENT_TEAM = 26K88C3DWU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Tilo;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Choose a calendar and avoid adding the same task event twice. Your calendars are never uploaded.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

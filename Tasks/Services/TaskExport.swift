@@ -21,6 +21,6 @@ struct TaskExport: Transferable, Identifiable, Sendable {
 
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: .json) { $0.data }
-            .suggestedFileName("OfflineTaskSync-tasks.json")
+            .suggestedFileName("Tilo-tasks.json")
     }
 }

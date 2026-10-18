@@ -218,7 +218,7 @@ private struct TaskCollectionView<BottomBar: View>: View {
                                 .font(Theme.Typography.sectionTitle)
                             Text("O JSON inclui tarefas, texto formatado, prazos e referências dos anexos. Fotos, vídeos e arquivos não são incluídos.")
                                 .font(Theme.Typography.body)
-                            ShareLink(item: archive, preview: SharePreview("OfflineTaskSync tasks")) {
+                            ShareLink(item: archive, preview: SharePreview("Tilo tasks")) {
                                 Label("Share JSON", systemImage: "square.and.arrow.up")
                                     .frame(minHeight: Theme.Metrics.minTouchTarget)
                             }
