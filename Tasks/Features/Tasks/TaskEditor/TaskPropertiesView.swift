@@ -65,7 +65,7 @@ struct TaskPropertiesView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Concluir") {
-                        // A picker can keep its initial value without sending a change.
+                        // Save the default if the picker has not changed.
                         switch property {
                         case .date: if session.draft.dueDate == nil { setDay(.now) }
                         case .time: if session.draft.dueTime == nil, session.draft.dueDate != nil { setTime(.now) }

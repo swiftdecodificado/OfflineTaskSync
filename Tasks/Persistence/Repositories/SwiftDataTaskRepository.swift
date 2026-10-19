@@ -173,7 +173,7 @@ final class SwiftDataTaskRepository: TaskRepository {
         }
         do {
             try Task.checkCancellation()
-            // Local edits can arrive while media is being written.
+            // Recheck for local edits after writing media.
             guard try canApply(snapshot) else {
                 await mediaStore.rollback(copied)
                 await mediaStore.discard(sessionID: sessionID)

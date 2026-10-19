@@ -151,7 +151,7 @@ actor TaskMediaStore {
         throw TaskMediaError.unavailable
     }
 
-    // Copy before the database write. The draft stays available if that write fails.
+    // Keep staged files until the database save succeeds.
     func prepare(_ attachments: [TaskAttachment], sessionID: UUID) throws -> [UUID] {
         var copied: [UUID] = []
         do {

@@ -35,6 +35,5 @@ import Testing
         let migrated = try await store.allTasks().sorted { $0.id.uuidString < $1.id.uuidString }
         #expect(migrated == baseline.0)
         #expect(Set(try await store.pendingDeletionIDs()) == Set(baseline.1))
-        print("SCHEDULE_MIGRATION_TASKS_VALIDATED: \(migrated.count)")
     }
 }

@@ -144,7 +144,7 @@ final class TaskReminders {
             if $0.reminderDate != $1.reminderDate { return $0.reminderDate! < $1.reminderDate! }
             return $0.id.uuidString < $1.id.uuidString
         }
-        // iOS limits pending local notifications; keep the nearest reminders scheduled.
+        // Schedule the nearest reminders within the iOS limit.
         let desired = access == .permitted ? candidates.prefix(64).map {
             ReminderRequest(id: Self.prefix + $0.id.uuidString, title: $0.title,
                             date: Date(timeIntervalSince1970: floor($0.reminderDate!.timeIntervalSince1970)))

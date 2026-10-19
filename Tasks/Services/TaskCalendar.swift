@@ -151,7 +151,7 @@ final class TaskCalendar {
         if let id = task.calendarEventID, !id.isEmpty { throw TaskCalendarError.missingEvent }
         guard let date = task.dueDate else { throw TaskCalendarError.missingDate }
         let destination = try calendarID ?? client.defaultCalendarID()
-        // Save the search date before EventKit so a failed reference save can be retried safely.
+        // Save the date first to recover the event if linking fails.
         try await repository.linkCalendar(id: taskID, eventID: "", date: date)
         task.calendarLinkDate = date
         let id = try client.createEvent(for: task, calendarID: destination)

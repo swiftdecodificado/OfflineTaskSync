@@ -48,7 +48,6 @@ struct TaskListView: View {
                 try Task.checkCancellation()
                 celebrationID = nil
             } catch is CancellationError {
-                // A reopened task cancels the celebration.
             } catch {
                 celebrationID = nil
                 showingCelebration = false

@@ -216,7 +216,7 @@ final class RichTaskEditorState: NSObject, UITextViewDelegate {
                         thumbnailData[attachment.id] = data
                         refreshAttachment(attachment)
                     }
-                } catch { /* The preview reports a missing original when opened. */ }
+                } catch { /* Missing files are reported when the preview opens. */ }
             }
         }
     }
